@@ -7,15 +7,18 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"runtime"
 
-	"github.com/a8m/mark"
+	"github.com/fatih/color"
+	"github.com/lnxbil/mark"
 )
 
 var (
-	input     = flag.String("i", "", "")
-	output    = flag.String("o", "", "")
-	smarty    = flag.Bool("smartypants", false, "")
-	fractions = flag.Bool("fractions", false, "")
+	input       = flag.String("i", "", "")
+	output      = flag.String("o", "", "")
+	smarty      = flag.Bool("smartypants", false, "")
+	fractions   = flag.Bool("fractions", false, "")
+	ansiconsole = flag.Bool("ansiconsole", false, "")
 )
 
 var usage = `Usage: mark [options...] <input>
@@ -28,6 +31,7 @@ Options:
   -smartypants  Use "smart" typograhic punctuation for things like 
                 quotes and dashes.
   -fractions    Traslate fraction like to suitable HTML elements
+  -ansiconsole  Uses ANSI escape sequences for Output
 `
 
 func main() {
@@ -77,8 +81,14 @@ func main() {
 	opts := mark.DefaultOptions()
 	opts.Smartypants = *smarty
 	opts.Fractions = *fractions
+	opts.ANSIConsole = *ansiconsole
 	m := mark.New(data, opts)
-	if _, err := file.WriteString(m.Render()); err != nil {
+
+	if runtime.GOOS == "windows" && file == os.Stdout {
+		fmt.Fprintf(color.Output, m.Render()+"\n")
+		return
+	}
+	if _, err := file.WriteString(m.Render() + "\n"); err != nil {
 		usageAndExit(fmt.Sprintf("error writing output to: %s.", file.Name()))
 	}
 }
