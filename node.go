@@ -5,12 +5,15 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/fatih/color"
 )
 
 // A Node is an element in the parse tree.
 type Node interface {
 	Type() NodeType
 	Render() string
+	RenderANSI() string
 }
 
 // NodeType identifies the type of a parse tree node.
@@ -64,6 +67,15 @@ func (n *ParagraphNode) Render() (s string) {
 	return wrap("p", s)
 }
 
+// RenderANSI returns the ANSI console representation of ParagraphNode
+func (n *ParagraphNode) RenderANSI() (s string) {
+	for _, node := range n.Nodes {
+		s += node.RenderANSI()
+	}
+	// TODO: console resizing
+	return s
+}
+
 func (p *parse) newParagraph(pos Pos) *ParagraphNode {
 	return &ParagraphNode{NodeType: NodeParagraph, Pos: pos}
 }
@@ -75,8 +87,13 @@ type TextNode struct {
 	Text string
 }
 
-// Render returns the string representation of TexNode
+// Render returns the string representation of TextNode
 func (n *TextNode) Render() string {
+	return n.Text
+}
+
+// RenderANSI returns the ANSI console representation of TextNode
+func (n *TextNode) RenderANSI() string {
 	return n.Text
 }
 
@@ -96,6 +113,12 @@ func (n *HTMLNode) Render() string {
 	return n.Src
 }
 
+// RenderANSI returns the src of the HTMLNode
+// TODO: Cannot anything useful here
+func (n *HTMLNode) RenderANSI() string {
+	return n.Src
+}
+
 func (p *parse) newHTML(pos Pos, src string) *HTMLNode {
 	return &HTMLNode{NodeType: NodeHTML, Pos: pos, Src: src}
 }
@@ -111,6 +134,12 @@ func (n *HrNode) Render() string {
 	return "<hr>"
 }
 
+// RenderANSI returns the horizontal line
+func (n *HrNode) RenderANSI() string {
+	// TODO: stretch to terminal length
+	return "----"
+}
+
 func (p *parse) newHr(pos Pos) *HrNode {
 	return &HrNode{NodeType: NodeHr, Pos: pos}
 }
@@ -124,6 +153,11 @@ type BrNode struct {
 // Render returns the html representation of line-break.
 func (n *BrNode) Render() string {
 	return "<br>"
+}
+
+// RenderANSI returns a line-break.
+func (n *BrNode) RenderANSI() string {
+	return "\n"
 }
 
 func (p *parse) newBr(pos Pos) *BrNode {
@@ -163,6 +197,26 @@ func (n *EmphasisNode) Render() string {
 	return wrap(n.Tag(), s)
 }
 
+// RenderANSI returns the ANSI representation of emphasis text.
+func (n *EmphasisNode) RenderANSI() (s string) {
+	for _, node := range n.Nodes {
+		s += node.RenderANSI()
+	}
+
+	switch n.Style {
+	case itemStrong:
+		s = color.New(color.Bold).Sprintf(s)
+	case itemItalic:
+		s = color.New(color.Italic).Sprintf(s)
+	case itemStrike:
+		s = color.New(color.CrossedOut).Sprintf(s)
+	case itemCode:
+		s = color.New(color.FgYellow).Sprintf(s)
+	}
+
+	return
+}
+
 func (p *parse) newEmphasis(pos Pos, style itemType) *EmphasisNode {
 	return &EmphasisNode{NodeType: NodeEmphasis, Pos: pos, Style: style}
 }
@@ -188,6 +242,14 @@ func (n *HeadingNode) Render() (s string) {
 	return fmt.Sprintf("<%[1]s id=\"%s\">%s</%[1]s>", "h"+strconv.Itoa(n.Level), id, s)
 }
 
+// RenderANSI returns the ANSI representation based on heading level.
+func (n *HeadingNode) RenderANSI() (s string) {
+	for _, node := range n.Nodes {
+		s += node.RenderANSI()
+	}
+	return color.New(color.FgBlue).Sprintf("\n" + s)
+}
+
 func (p *parse) newHeading(pos Pos, level int, text string) *HeadingNode {
 	return &HeadingNode{NodeType: NodeHeading, Pos: pos, Level: level, Text: p.text(text)}
 }
@@ -209,9 +271,23 @@ func (n *CodeNode) Render() string {
 	return wrap("pre", code)
 }
 
+// RenderANSI return the ansi representation of codeBlock
+func (n *CodeNode) RenderANSI() (s string) {
+	// n.Lang pipe through syntax highlighter
+	stra := strings.Split(n.Text, "\n")
+	for v := range stra {
+		stra[v] = "  " + stra[v]
+	}
+	s = strings.Join(stra, "\n")
+
+	return color.New(color.FgYellow).Sprintf(s)
+}
+
 func (p *parse) newCode(pos Pos, lang, text string) *CodeNode {
 	// DRY: see `escape()` below
-	text = strings.NewReplacer("<", "&lt;", ">", "&gt;", "\"", "&quot;", "&", "&amp;").Replace(text)
+	if !p.root().options.ANSIConsole {
+		text = strings.NewReplacer("<", "&lt;", ">", "&gt;", "\"", "&quot;", "&", "&amp;").Replace(text)
+	}
 	return &CodeNode{NodeType: NodeCode, Pos: pos, Lang: lang, Text: text}
 }
 
@@ -233,6 +309,17 @@ func (n *LinkNode) Render() (s string) {
 		attrs += fmt.Sprintf(" title=\"%s\"", n.Title)
 	}
 	return fmt.Sprintf("<a %s>%s</a>", attrs, s)
+}
+
+// RenderANSI returns the ANSI representation of link node
+// TODO: This is not possible in ANSI, so just
+func (n *LinkNode) RenderANSI() (s string) {
+	for _, node := range n.Nodes {
+		s += node.RenderANSI()
+	}
+
+	// TODO: Think of something more intelligent
+	return
 }
 
 func (p *parse) newLink(pos Pos, title, href string, nodes ...Node) *LinkNode {
@@ -264,6 +351,22 @@ func (n *RefNode) Render() string {
 	return node.Render()
 }
 
+// RenderANSI returns rendering based type
+func (n *RefNode) RenderANSI() string {
+	var node Node
+	ref := strings.ToLower(n.Ref)
+	if l, ok := n.tr.links[ref]; ok {
+		if n.Type() == NodeRefLink {
+			node = n.tr.newLink(n.Pos, l.Title, l.Href, n.Nodes...)
+		} else {
+			node = n.tr.newImage(n.Pos, l.Title, l.Href, n.Text)
+		}
+	} else {
+		node = n.tr.newText(n.Pos, n.Raw)
+	}
+	return node.RenderANSI()
+}
+
 // newRefLink create new RefLink that suitable for link
 func (p *parse) newRefLink(typ itemType, pos Pos, raw, ref string, text []Node) *RefNode {
 	return &RefNode{NodeType: NodeRefLink, Pos: pos, tr: p.root(), Raw: raw, Ref: ref, Nodes: text}
@@ -286,6 +389,10 @@ func (n *DefLinkNode) Render() string {
 	return ""
 }
 
+// Deflink have no representation(Transparent node)
+func (n *DefLinkNode) RenderANSI() string {
+	return ""
+}
 func (p *parse) newDefLink(pos Pos, name, href, title string) *DefLinkNode {
 	return &DefLinkNode{NodeType: NodeLink, Pos: pos, Name: name, Href: href, Title: title}
 }
@@ -306,6 +413,10 @@ func (n *ImageNode) Render() string {
 	return fmt.Sprintf("<img %s>", attrs)
 }
 
+// Render returns the html representation on image node
+func (n *ImageNode) RenderANSI() string {
+	return "IMAGE"
+}
 func (p *parse) newImage(pos Pos, title, src, alt string) *ImageNode {
 	return &ImageNode{NodeType: NodeImage, Pos: pos, Title: p.text(title), Src: p.text(src), Alt: p.text(alt)}
 }
@@ -335,6 +446,15 @@ func (n *ListNode) Render() (s string) {
 	return wrap(tag, s)
 }
 
+// RenderANSI returns the html representation of orderd(ol) or unordered(ul) list.
+func (n *ListNode) RenderANSI() (s string) {
+	for _, item := range n.Items {
+		s += "\n" + item.RenderANSI()
+	}
+	s += "\n"
+	return s
+}
+
 func (p *parse) newList(pos Pos, ordered bool) *ListNode {
 	return &ListNode{NodeType: NodeList, Pos: pos, Ordered: ordered}
 }
@@ -358,6 +478,13 @@ func (l *ListItemNode) Render() (s string) {
 	return wrap("li", s)
 }
 
+// RenderANSI returns the html representation of list-item
+func (l *ListItemNode) RenderANSI() (s string) {
+	for _, node := range l.Nodes {
+		s += node.RenderANSI()
+	}
+	return color.New(color.FgYellow).Sprintf("* ") + s
+}
 func (p *parse) newListItem(pos Pos) *ListItemNode {
 	return &ListItemNode{NodeType: NodeListItem, Pos: pos}
 }
@@ -392,6 +519,11 @@ func (n *TableNode) Render() string {
 	return wrap("table", s)
 }
 
+// RenderANSI returns the html representation of a table
+func (n *TableNode) RenderANSI() string {
+	// TODO: Table
+	return "TABLE TODO"
+}
 func (p *parse) newTable(pos Pos) *TableNode {
 	return &TableNode{NodeType: NodeTable, Pos: pos}
 }
@@ -415,6 +547,11 @@ func (r *RowNode) Render() string {
 	}
 	s += "\n"
 	return wrap("tr", s)
+}
+
+// RenderANSI returns the html representation of table-row
+func (r *RowNode) RenderANSI() string {
+	return ""
 }
 
 func (p *parse) newRow(pos Pos) *RowNode {
@@ -467,6 +604,11 @@ func (c *CellNode) Render() string {
 	return fmt.Sprintf("<%[1]s%s>%s</%[1]s>", tag, c.Style(), s)
 }
 
+// RenderANSI returns the html reprenestation of table-cell
+func (c *CellNode) RenderANSI() string {
+	return ""
+}
+
 // Style return the cell-style based on alignment field
 func (c *CellNode) Style() string {
 	s := " style=\"text-align:"
@@ -503,6 +645,16 @@ func (n *BlockQuoteNode) Render() string {
 	return wrap("blockquote", s)
 }
 
+// RenderANSI returns the html representation of BlockQuote
+func (n *BlockQuoteNode) RenderANSI() string {
+	var s string
+	for _, node := range n.Nodes {
+		s += node.Render()
+	}
+	// TODO: Something useful
+	return s
+}
+
 func (p *parse) newBlockQuote(pos Pos) *BlockQuoteNode {
 	return &BlockQuoteNode{NodeType: NodeBlockQuote, Pos: pos}
 }
@@ -524,6 +676,18 @@ func (n *CheckboxNode) Render() string {
 	return s + ">"
 }
 
+// RenderANSI returns the html representation of checked and unchecked CheckBox.
+func (n *CheckboxNode) RenderANSI() string {
+	s := color.New(color.FgYellow).Sprintf("[")
+
+	if n.Checked {
+		s += color.New(color.FgGreen).Sprintf("x")
+	} else {
+		s += " "
+	}
+	return s + color.New(color.FgYellow).Sprintf("]")
+}
+
 func (p *parse) newCheckbox(pos Pos, checked bool) *CheckboxNode {
 	return &CheckboxNode{NodeType: NodeCheckbox, Pos: pos, Checked: checked}
 }
@@ -541,6 +705,9 @@ func (p *parse) text(input string) string {
 	}
 	if opts.Fractions {
 		input = smartyfractions(input)
+	}
+	if opts.ANSIConsole {
+		return input
 	}
 	return escape(input)
 }

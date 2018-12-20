@@ -93,7 +93,11 @@ func (p *parse) render() {
 		if fn, ok := p.renderFn[node.Type()]; ok {
 			output = fn(node)
 		} else {
-			output = node.Render()
+			if p.options.ANSIConsole {
+				output = node.RenderANSI()
+			} else {
+				output = node.Render()
+			}
 		}
 		p.output += output
 		if output != "" && i != len(p.Nodes)-1 {

@@ -10,12 +10,14 @@ type Mark struct {
 
 // Mark options used to configure your Mark object
 // set `Smartypants` and `Fractions` to true to enable
-// smartypants and smartfractions rendering.
+// smartypants and smartfractions rendering. Enable
+// `ANSIConsole` for console output instead of HTML
 type Options struct {
 	Gfm         bool
 	Tables      bool
 	Smartypants bool
 	Fractions   bool
+	ANSIConsole bool
 }
 
 // DefaultOptions return an options struct with default configuration
