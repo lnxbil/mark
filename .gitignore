@@ -1,3 +1,6 @@
 draft*
 coverage/
+
+# build artifacts
 cmd/mark/mark
+cmd/mark/mark.exe
