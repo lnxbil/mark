@@ -247,7 +247,7 @@ func (n *HeadingNode) RenderANSI() (s string) {
 	for _, node := range n.Nodes {
 		s += node.RenderANSI()
 	}
-	return color.New(color.FgBlue).Sprintf("\n" + s)
+	return color.New(color.FgGreen).Sprintf(s)
 }
 
 func (p *parse) newHeading(pos Pos, level int, text string) *HeadingNode {
